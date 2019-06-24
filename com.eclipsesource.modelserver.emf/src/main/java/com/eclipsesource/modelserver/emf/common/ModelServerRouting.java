@@ -15,9 +15,7 @@
  *******************************************************************************/
 package com.eclipsesource.modelserver.emf.common;
 
-import static io.javalin.apibuilder.ApiBuilder.crud;
-import static io.javalin.apibuilder.ApiBuilder.path;
-import static io.javalin.apibuilder.ApiBuilder.get;
+import static io.javalin.apibuilder.ApiBuilder.*;
 
 
 import com.eclipsesource.modelserver.common.Routing;
@@ -38,8 +36,33 @@ public class ModelServerRouting extends Routing {
 	public void bindRoutes() {
 		javalin.routes(() -> {
 			path("api/v1/", () -> {
-				crud("model/:modeluri", getController(ModelController.class));
+				// subscribe to session
+				ws("subscribe/:sessionId", wsHandler -> {
+					wsHandler.onConnect(ctx -> {
+						final String sessionId = ctx.pathParam("sessionId");
+						getController(SessionController.class).subscribeSession(ctx, sessionId);
+					});
+				});
 				get("schema/:modeluri", getController(SchemaController.class));
+				path("model", () -> {
+					// get
+					path(":modeluri", () -> {
+						get(ctx -> getController(ModelController.class).getOne(ctx, ctx.pathParam("modeluri")));
+					});
+					// update
+					path(":modeluri/:sessionId", () -> {
+						patch(ctx ->
+							getController(ModelController.class)
+								.update(ctx, ctx.pathParam("sessionId"))
+						);
+					});
+					// create session
+					ws(":modeluri", wsHandler -> {
+						wsHandler.onConnect(ctx -> {
+							getController(SessionController.class).createSession(ctx, ctx.pathParam("modeluri"));
+						});
+					});
+				});
 			});
 		});
 	}

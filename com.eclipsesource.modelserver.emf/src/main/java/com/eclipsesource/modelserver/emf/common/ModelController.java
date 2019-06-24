@@ -15,8 +15,13 @@
  *******************************************************************************/
 package com.eclipsesource.modelserver.emf.common;
 
+import java.io.IOException;
 import java.util.Optional;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.javalin.http.Context;
+import io.javalin.plugin.json.JavalinJackson;
+import io.javalin.websocket.WsConnectContext;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.resource.ResourceSet;
@@ -27,9 +32,8 @@ import com.eclipsesource.modelserver.emf.ResourceManager;
 import com.eclipsesource.modelserver.emf.configuration.ServerConfiguration;
 import com.google.inject.Inject;
 
-import io.javalin.Context;
+
 import io.javalin.apibuilder.CrudHandler;
-import io.javalin.json.JavalinJackson;
 
 public class ModelController implements CrudHandler {
 
@@ -37,9 +41,11 @@ public class ModelController implements CrudHandler {
 	private ResourceManager resourceManager;
 	@Inject
 	private ServerConfiguration serverConfiguration;
+	@Inject
+	private SessionController sessionController;
 
 	private ResourceSet resourceSet = new ResourceSetImpl();
-	
+
 	public ModelController() {
 		JavalinJackson.configure(EMFJsonConverter.setupDefaultMapper());
 	}
@@ -65,8 +71,21 @@ public class ModelController implements CrudHandler {
 	}
 
 	@Override
-	public void update(Context ctx, String modeluri) {
-		// TODO Auto-generated method stub
+	public void update(Context ctx, String sessionId) {
+		final EMFJsonConverter emfJsonConverter = new EMFJsonConverter();
+		final String body = ctx.body();
+		try {
+			final JsonNode json = JavalinJackson.getObjectMapper().readTree(body);
+			final Optional<EObject> maybeEObject = emfJsonConverter.fromJson(json.get("data").toString());
+			maybeEObject.map(eObject -> {
+				sessionController.sessionChanged(sessionId);
+				return ctx.json(eObject).status(200);
+			}).orElse(ctx.status(400));
+		} catch (IOException e) {
+			ctx.status(400).json(WsResponse.error("Invalid JSON"));
+		}
+
+
 	}
 
 	private Optional<EObject> loadModel(String filePath) {

@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.TimeZone;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.log4j.Logger;
 import org.eclipse.emf.ecore.EObject;
 import org.emfjson.jackson.module.EMFModule;
@@ -67,7 +68,8 @@ public class EMFJsonConverter {
 
 	public <T extends EObject> Optional<T> fromJson(String json, Class<T> clazz) {
 		try {
-			return Optional.of(mapper.readValue(json, clazz)).map(clazz::cast);
+			final T t = mapper.readValue(json, clazz);
+			return Optional.of(t).map(clazz::cast);
 		} catch (IOException | ClassCastException e) {
 			LOG.error(String.format("The json input \"%s\" could not be converted to an EObject of type \"%s\"", json,
 					clazz.getSimpleName()));
@@ -86,5 +88,4 @@ public class EMFJsonConverter {
 	public void setMapper(ObjectMapper mapper) {
 		this.mapper = mapper;
 	}
-
 }

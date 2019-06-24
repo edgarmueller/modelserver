@@ -23,6 +23,7 @@ import com.eclipsesource.modelserver.common.EntryPointType;
 import com.eclipsesource.modelserver.common.Routing;
 import com.eclipsesource.modelserver.emf.ResourceManager;
 import com.eclipsesource.modelserver.emf.common.SchemaController;
+import com.eclipsesource.modelserver.emf.common.SessionController;
 import com.eclipsesource.modelserver.emf.configuration.EPackageConfiguration;
 import com.eclipsesource.modelserver.emf.configuration.EcorePackageConfiguration;
 import com.eclipsesource.modelserver.emf.configuration.ServerConfiguration;
@@ -37,10 +38,12 @@ import com.google.inject.multibindings.MapBinder;
 import com.google.inject.multibindings.Multibinder;
 
 import io.javalin.Javalin;
+import org.apache.log4j.Logger;
 
 public class ModelServerModule extends AbstractModule {
 
 	private Javalin app;
+	private static final Logger LOG = Logger.getLogger(ModelServerModule.class);
 	protected Multibinder<EPackageConfiguration> ePackageConfigurationBinder;
 	protected ArrayList<Class<? extends EPackageConfiguration>> ePackageConfigurations;
 
@@ -54,7 +57,11 @@ public class ModelServerModule extends AbstractModule {
 	}
 
 	public static ModelServerModule create() {
-		return new ModelServerModule(Javalin.create());
+		return new ModelServerModule(Javalin.create(config -> {
+			config.requestLogger((ctx, ms) -> {
+				LOG.info(ctx.method() + " "  + ctx.path() + " took " + ms + " ms");
+			});
+		}));
 	}
 
 	@Override
@@ -68,12 +75,13 @@ public class ModelServerModule extends AbstractModule {
 		bind(ModelServerStartup.class).in(Singleton.class);
 		bind(ModelController.class).in(Singleton.class);
 		bind(SchemaController.class).in(Singleton.class);
+		bind(SessionController.class).in(Singleton.class);
 		Multibinder.newSetBinder(binder(), Routing.class).addBinding().to(ModelServerRouting.class).in(Singleton.class);
 		MapBinder.newMapBinder(binder(), EntryPointType.class, AppEntryPoint.class).addBinding(EntryPointType.REST)
 				.to(ModelServerEntryPoint.class);
 	}
 
 	public void addEPackageConfigurations(Collection<Class<? extends EPackageConfiguration>> configs) {
-		configs.forEach(c -> ePackageConfigurations.add(c));
+		ePackageConfigurations.addAll(configs);
 	}
 }
