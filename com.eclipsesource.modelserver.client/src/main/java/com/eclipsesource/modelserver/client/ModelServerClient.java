@@ -68,6 +68,18 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
     }
 
     @Override
+    public CompletableFuture<Response<EObject>> get(String modelUri, String format) {
+        final Request request = new Request.Builder()
+            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri))
+            .build();
+
+        return makeCall(request)
+            .thenApply(response -> parseField(response, "data"))
+            .thenApply(resp -> resp.mapBody(body -> body.flatMap(b -> decode(b, findFormat(format)))))
+            .thenApply(this::getBodyOrThrow);
+    }
+
+    @Override
     public CompletableFuture<Response<List<String>>> getAll() {
         final Request request = new Request.Builder()
             .url(makeUrl(MODEL_URIS))
@@ -118,15 +130,7 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
     @Override
     public CompletableFuture<Response<EObject>> update(String modelUri, EObject updatedModel, String format) {
 
-        String f = format;
 
-        if (f.isEmpty()) {
-            f = "json";
-        }
-
-        if (!isSupportedFormat(f)) {
-            throw new CancellationException("Unsupported format "  + format);
-        }
 
         final Request request = new Request.Builder()
             .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri) + addQueryParam("format", format))
@@ -144,6 +148,20 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
             .thenApply(response -> parseField(response, "data"))
             .thenApply(resp -> resp.mapBody(body -> body.flatMap(b -> decode(b, format))))
             .thenApply(this::getBodyOrThrow);
+    }
+
+    private String findFormat(String format) {
+        String f = format;
+
+        if (f.isEmpty()) {
+            f = "json";
+        }
+
+        if (!isSupportedFormat(f)) {
+            throw new CancellationException("Unsupported format " + format);
+        }
+
+        return f;
     }
 
     private boolean isSupportedFormat(String format) {

@@ -22,6 +22,8 @@ public interface ModelServerClientApiV1<A> {
 
     CompletableFuture<Response<String>> get(String modelUri);
 
+    CompletableFuture<Response<A>> get(String modelUri, String format);
+
     CompletableFuture<Response<List<String>>> getAll();
 
     CompletableFuture<Response<Boolean>> delete(String modelUri);
