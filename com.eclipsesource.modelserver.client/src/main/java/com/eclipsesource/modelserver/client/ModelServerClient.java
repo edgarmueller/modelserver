@@ -59,7 +59,7 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
     @Override
     public CompletableFuture<Response<String>> get(String modelUri) {
         final Request request = new Request.Builder()
-            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri))
+            .url(makeUrl(MODEL_BASE_PATH, Collections.singletonList(new QueryParam("modeluri", modelUri))))
             .build();
 
         return makeCall(request)
@@ -69,13 +69,18 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
 
     @Override
     public CompletableFuture<Response<EObject>> get(String modelUri, String format) {
+        String foundFormat = findFormat(format);
         final Request request = new Request.Builder()
-            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri))
+            .url(
+                makeUrl(
+                    MODEL_BASE_PATH,
+                    Arrays.asList(new QueryParam("modeluri", modelUri), new QueryParam("format", foundFormat)))
+            )
             .build();
 
         return makeCall(request)
             .thenApply(response -> parseField(response, "data"))
-            .thenApply(resp -> resp.mapBody(body -> body.flatMap(b -> decode(b, findFormat(format)))))
+            .thenApply(resp -> resp.mapBody(body -> body.flatMap(b -> decode(b, foundFormat))))
             .thenApply(this::getBodyOrThrow);
     }
 
@@ -101,8 +106,12 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
 
     @Override
     public CompletableFuture<Response<Boolean>> delete(String modelUri) {
+        final String url = makeUrl(
+            MODEL_BASE_PATH,
+            Collections.singletonList(new QueryParam("modeluri", modelUri))
+        );
         final Request request = new Request.Builder()
-            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri))
+            .url(url)
             .delete()
             .build();
 
@@ -115,7 +124,7 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
     @Override
     public CompletableFuture<Response<String>> update(String modelUri, String updatedModel) {
         final Request request = new Request.Builder()
-            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri))
+            .url(makeUrl(MODEL_BASE_PATH, Collections.singletonList(new QueryParam("modeluri", modelUri))))
             .patch(
                 RequestBody.create(
                     Json.object(Json.prop("data", Json.text(updatedModel))).toString(), MediaType.parse("application/json"))
@@ -129,15 +138,21 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
 
     @Override
     public CompletableFuture<Response<EObject>> update(String modelUri, EObject updatedModel, String format) {
-
-
-
+        final String foundFormat = findFormat(format);
         final Request request = new Request.Builder()
-            .url(makeUrl(MODEL_BASE_PATH) + queryParam("modeluri", modelUri) + addQueryParam("format", format))
+            .url(
+                makeUrl(
+                    MODEL_BASE_PATH,
+                    Arrays.asList(
+                        new QueryParam("modeluri", modelUri),
+                        new QueryParam("format", foundFormat)
+                    )
+                )
+            )
             .patch(
                 RequestBody.create(
                     Json.object(
-                        Json.prop("data", Json.text(encode(updatedModel, format)))
+                        Json.prop("data", Json.text(encode(updatedModel, foundFormat)))
                     ).toString(),
                     MediaType.parse("application/json")
                 )
@@ -171,7 +186,7 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
     @Override
     public CompletableFuture<Response<String>> getSchema(String modelUri) {
         final Request request = new Request.Builder()
-            .url(makeUrl(SCHEMA) + queryParam("modeluri", modelUri))
+            .url(makeUrl(SCHEMA, Collections.singletonList(new QueryParam("modeluri", modelUri))))
             .build();
 
         return makeCall(request)
@@ -211,13 +226,10 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
 
     @Override
     public void subscribe(String modelUri, SubscriptionListener subscriptionListener) {
-        final String queryParams = modelUri.contains("?") ? modelUri.substring(modelUri.indexOf("?")) : "";
         Request request = new Request.Builder()
-            .url(makeUrl(SUBSCRIPTION)
+            .url(makeUrl(SUBSCRIPTION, Collections.singletonList(new QueryParam("modeluri", modelUri)))
                 .replace("http", "ws")
                 .replace(":modeluri", modelUri.substring(0, modelUri.indexOf("?")))
-                .concat(queryParams)
-                .concat(queryParam("modeluri", modelUri))
             )
             .build();
         final WebSocket socket = client.newWebSocket(request, new WebSocketListener() {
@@ -270,11 +282,26 @@ public class ModelServerClient implements ModelServerClientApi<EObject>, ModelSe
         return baseUrl + path;
     }
 
-    private String queryParam(String param, String paramValue) {
+    private String makeUrl(String path, List<QueryParam> queryParams) {
+        StringBuilder url = new StringBuilder(baseUrl + path);
+        int i = 0;
+        for (QueryParam queryParam : queryParams) {
+            if (i == 0) {
+                url.append(queryParam1(queryParam.name, queryParam.value));
+            } else {
+                url.append(addQueryParam1(queryParam.name, queryParam.value));
+            }
+            i += 1;
+        }
+
+        return url.toString();
+    }
+
+    private String queryParam1(String param, String paramValue) {
         return "?" + param + "=" + paramValue;
     }
 
-    private String addQueryParam(String param, String paramValue) {
+    private String addQueryParam1(String param, String paramValue) {
         return "&" + param + "=" + paramValue;
     }
 
