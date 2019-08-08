@@ -22,7 +22,6 @@ import java.util.Optional;
 import org.apache.log4j.Logger;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
-import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.util.EcoreUtil;
 
 import com.eclipsesource.modelserver.command.CCommand;
@@ -55,15 +54,17 @@ public class ModelController {
 	}
 
 	public void create(Context ctx, String modeluri) {
-		getContents(readResource(ctx, modeluri)).ifPresentOrElse(
+		readPayload(ctx).ifPresentOrElse(
 			eObject -> {
 				try {
 					this.modelRepository.addModel(modeluri, eObject);
 					final JsonNode encoded = codecs.encode(ctx, eObject);
-						ctx.json(JsonResponse.success(encoded));
+					ctx.json(JsonResponse.success(encoded));
 					this.sessionController.modelChanged(modeluri);
 				} catch (EncodingException ex) {
 					handleEncodingError(ctx, ex);
+				} catch (IOException e) {
+					handleError(ctx, 500, "Could not save resource");
 				}
 			},
 			() -> handleError(ctx, 400, "Create new model failed")
@@ -74,7 +75,7 @@ public class ModelController {
 		if (this.modelRepository.hasModel(modeluri)) {
 			try {
 				this.modelRepository.removeModel(modeluri);
-			ctx.json(JsonResponse.success("Model '" + modeluri + "' successfully deleted"));
+				ctx.json(JsonResponse.success("Model '" + modeluri + "' successfully deleted"));
 				this.sessionController.modelDeleted(modeluri);
 			} catch (IOException e) {
 				handleError(ctx, 404, "Model '" + modeluri + "' not found, cannot be deleted!");
@@ -118,17 +119,13 @@ public class ModelController {
 	}
 
 	public void update(Context ctx, String modeluri) {
-		Optional<Resource> resource = readResource(ctx, "temp$update.json");
-		getContents(resource).ifPresentOrElse(
+		readPayload(ctx).ifPresentOrElse(
 			eObject -> modelRepository.updateModel(modeluri, eObject)
 				.ifPresentOrElse(__ -> {
 						try {
-					ctx.json(JsonResponse.fullUpdate(codecs.encode(ctx, eObject)));
+							ctx.json(JsonResponse.fullUpdate(codecs.encode(ctx, eObject)));
 						} catch (EncodingException e) {
 							handleEncodingError(ctx, e);
-						} finally {
-							// Ditch the temporary resource
-							resource.get().getResourceSet().getResources().remove(resource.get());
 						}
 						sessionController.modelChanged(modeluri);
 					},
@@ -149,7 +146,7 @@ public class ModelController {
 
 	public Handler modelUrisHandler = ctx -> ctx.json(JsonResponse.success(JsonCodec.encode(this.modelRepository.getAllModelUris())));
 
-	private Optional<Resource> readResource(Context ctx, String modelURI) {
+	private Optional<EObject> readPayload(Context ctx) {
 		try {
 			JsonNode json = JavalinJackson.getObjectMapper().readTree(ctx.body());
 			if (!json.has("data")) {
@@ -162,63 +159,47 @@ public class ModelController {
 				handleError(ctx, 400, "Empty JSON");
 				return Optional.empty();
 			}
-			return codecs.decode(ctx, modelRepository.getResourceSet(), modelURI, jsonData);
+
+			return codecs.decode(ctx, jsonData);
 		} catch (DecodingException | IOException e) {
 			handleError(ctx, 400, "Invalid JSON");
 		}
 		return Optional.empty();
 	}
-	
-	/**
-	 * Get the first {@link EObject} in a {@code resource}'s {@link Resource#getContents() contents}, or
-	 * an {@linkplain Optional#empty() empty optional} if the {@code resource} is empty.
-	 * 
-	 * @param resource an optional resource from which to get its optional content
-	 * @return the optional content, or empty if no resource or no content in the resource
-	 */
-	private Optional<EObject> getContents(Optional<Resource> resource) {
-		return resource.map(r -> r.getContents().isEmpty() ? null : r.getContents().get(0));
-	}
 
 	public void executeCommand(Context ctx, String modelURI) {
 		this.modelRepository.getModel(modelURI).ifPresentOrElse(
-				model -> {
-					if (model == null) {
-						handleError(ctx, 404, String.format("Model '%s' not found!", modelURI));
-					} else {
-							String commandURI = "command$1.command";
-							Optional<Resource> resource = readResource(ctx, commandURI);
-							getContents(resource).filter(CCommand.class::isInstance)//
-									.map(CCommand.class::cast) //
-									.ifPresent(cmd -> {
-										
-										try {
-											EcoreUtil.resolveAll(cmd);
-											
-											// Use an unique copy of the command for each operation
-											// here to ensure isolation in case of side-effects
-											modelRepository.updateModel(modelURI, EcoreUtil.copy(cmd));
-											sessionController.modelChanged(modelURI, EcoreUtil.copy(cmd));
-											ctx.json(JsonResponse.success());
-										} catch (DecodingException e) {
-											handleDecodingError(ctx, e);
-										} finally {
-											// Ditch the temporary resource
-											resource.get().getResourceSet().getResources().remove(resource.get());
-										}
-									});
-							ctx.json(JsonResponse.success("Model '" + modelURI + "' successfully updated"));
+			model -> {
+				if (model == null) {
+					handleError(ctx, 404, String.format("Model '%s' not found!", modelURI));
+				} else {
+					readPayload(ctx).filter(CCommand.class::isInstance)//
+						.map(CCommand.class::cast) //
+						.ifPresent(cmd -> {
+							try {
+								EcoreUtil.resolveAll(cmd);
 
-					}
-				},
-				() -> handleError(ctx, 404, String.format("Model '%s' not found!", modelURI))
-			);
+								// Use an unique copy of the command for each operation
+								// here to ensure isolation in case of side-effects
+								modelRepository.updateModel(modelURI, EcoreUtil.copy(cmd));
+								sessionController.modelChanged(modelURI, EcoreUtil.copy(cmd));
+								ctx.json(JsonResponse.success());
+							} catch (DecodingException e) {
+								handleDecodingError(ctx, e);
+							}
+						});
+					ctx.json(JsonResponse.success("Model '" + modelURI + "' successfully updated"));
+
+				}
+			},
+			() -> handleError(ctx, 404, String.format("Model '%s' not found!", modelURI))
+		);
 	}
-	
+
 	private void handleEncodingError(Context context, EncodingException ex) {
 		handleError(context, 500, "An error occurred during data encoding", ex);
 	}
-	
+
 	private void handleDecodingError(Context context, DecodingException ex) {
 		handleError(context, 500, "An error occurred during data decoding", ex);
 	}

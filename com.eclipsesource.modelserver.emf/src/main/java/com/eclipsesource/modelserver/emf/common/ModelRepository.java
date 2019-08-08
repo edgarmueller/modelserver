@@ -127,9 +127,11 @@ public class ModelRepository {
 		return models;
 	}
 
-	public void addModel(String modeluri, EObject model) {
-		Resource resource = resourceSet.getResource(createURI(modeluri), true);
+	public void addModel(String modeluri, EObject model) throws IOException {
+		final Resource resource = resourceSet.createResource(createURI(modeluri));
+		resourceSet.getResources().add(resource);
 		resource.getContents().add(model);
+		resource.save(null);
 	}
 
 	/**

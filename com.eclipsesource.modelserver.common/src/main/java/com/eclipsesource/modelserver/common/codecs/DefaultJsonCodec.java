@@ -53,7 +53,16 @@ public class DefaultJsonCodec implements Codec {
 
 	@Override
 	public Optional<EObject> decode(String payload) {
-		return emfJsonConverter.fromJson(payload);
+		URI uri = URI.createURI("virtual.json");
+		final JsonResource jsonResource = new JsonResource(uri, getObjectMapper());
+
+		try (InputStream input = new ByteArrayInputStream(payload.getBytes())) {
+			jsonResource.load(input, null);
+		} catch (IOException e) {
+			jsonResource.getErrors().add(new JSONException(e, JsonLocation.NA));
+		}
+
+		return Optional.of(jsonResource.getContents().remove(0));
 	}
 
 	public static JsonNode encode(Object obj) throws EncodingException {
@@ -76,33 +85,4 @@ public class DefaultJsonCodec implements Codec {
 	protected ObjectMapper getObjectMapper() {
 		return emfJsonConverter.getMapper();
 	}
-
-	@Override
-	public Optional<Resource> decode(ResourceSet resourceSet, String modelURI, String payload)
-			throws DecodingException {
-
-		URI uri = URI.createURI(modelURI);
-		Resource result = resourceSet.getResource(uri, false);
-		if (result != null && !(result instanceof JsonResource)) {
-			// Replace it
-			LOG.warn(String.format("Replacing resource '%s' with a JsonResource", modelURI));
-			result.unload();
-			resourceSet.getResources().remove(result);
-			result = null;
-		}
-
-		if (result == null) {
-			result = new JsonResource(uri, getObjectMapper());
-			resourceSet.getResources().add(result);
-		}
-
-		try (InputStream input = new ByteArrayInputStream(payload.getBytes())) {
-			result.load(input, resourceSet.getLoadOptions());
-		} catch (IOException e) {
-			result.getErrors().add(new JSONException(e, JsonLocation.NA));
-		}
-
-		return Optional.of(result);
-	}
-
 }

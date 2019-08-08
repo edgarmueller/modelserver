@@ -63,7 +63,6 @@ public class XmiCodec implements Codec {
 		return resourceSet.createResource(URI.createURI("virtual.xmi"));
 	}
 
-	@Override
 	public Optional<Resource> decode(ResourceSet resourceSet, String modelURI, String payload)
 			throws DecodingException {
 

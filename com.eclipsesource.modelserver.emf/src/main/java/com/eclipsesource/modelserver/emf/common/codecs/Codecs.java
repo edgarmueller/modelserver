@@ -53,10 +53,6 @@ public class Codecs {
         return findFormat(context.queryParamMap()).decode(payload);
     }
 
-    public Optional<Resource> decode(Context context, ResourceSet resourceSet, String modelURI, String payload) throws DecodingException {
-        return findFormat(context.queryParamMap()).decode(resourceSet, modelURI, payload);
-    }
-
     private Codec findFormat(Map<String, List<String>> queryParams) {
         return Optional
             .ofNullable(queryParams.get("format"))
